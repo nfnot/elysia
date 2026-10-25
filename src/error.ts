@@ -246,6 +246,29 @@ export const mapValueError = (
 	}
 }
 
+/**
+ * Maximum amount of validation error
+ */
+export const MAX_ERRORS = 64
+
+const takeErrors = (
+	iterator: ValueErrorIterator,
+	limit = MAX_ERRORS
+): ValueErrorWithSummary[] => {
+	const errors: ValueErrorWithSummary[] = []
+
+	for (const error of iterator) {
+		if (!error) continue
+
+		const mapped = mapValueError(error)
+		if (mapped) errors.push(mapped)
+
+		if (errors.length >= limit) break
+	}
+
+	return errors
+}
+
 export class InvalidFileType extends Error {
 	code = 'INVALID_FILE_TYPE'
 	status = 422
@@ -435,17 +458,17 @@ export class ValidationError extends Error {
 											expected,
 											errors:
 												'Errors' in validator
-													? [
-															...validator.Errors(
+													? takeErrors(
+															validator.Errors(
 																value
 															)
-														].map(mapValueError)
-													: [
-															...Value.Errors(
+														)
+													: takeErrors(
+															Value.Errors(
 																validator,
 																value
 															)
-														].map(mapValueError)
+														)
 										},
 								validator
 							)
@@ -475,12 +498,8 @@ export class ValidationError extends Error {
 						found: value,
 						errors:
 							'Errors' in validator
-								? [...validator.Errors(value)].map(
-										mapValueError
-									)
-								: [...Value.Errors(validator, value)].map(
-										mapValueError
-									)
+								? takeErrors(validator.Errors(value))
+								: takeErrors(Value.Errors(validator, value))
 					},
 					2
 				)
@@ -520,7 +539,7 @@ export class ValidationError extends Error {
 
 			// Map standard schema issues to the expected format
 			return (
-				issues?.map((issue: any) => ({
+				issues?.slice(0, MAX_ERRORS).map((issue: any) => ({
 					summary: issue.message,
 					path: issue.path?.join('.') || 'root',
 					message: issue.message,
@@ -531,11 +550,9 @@ export class ValidationError extends Error {
 
 		// Handle TypeBox validators
 		return 'Errors' in this.validator
-			? [...this.validator.Errors(this.value)]
-					.filter((x) => x)
-					.map((x) => mapValueError(x) as ValueErrorWithSummary)
+			? takeErrors(this.validator.Errors(this.value))
 			: // @ts-ignore
-				[...Value.Errors(this.validator, this.value)].map(mapValueError)
+				takeErrors(Value.Errors(this.validator, this.value))
 	}
 
 	static simplifyModel(
